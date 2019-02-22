@@ -1,7 +1,7 @@
 hdfs-over-ftp
 =============
 FTP server which works on a top of HDFS
-Source code is provided under Apache License 2.0
+Source code is provided under MIT License
 
 FTP server is configurable by hdfs-over-ftp.properties and users.properties. It allows to use secure connection over SSL and supports all HDFS permissions.
 
