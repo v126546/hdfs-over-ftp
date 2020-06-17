@@ -1,0 +1,16 @@
+/target/
+*.class
+src/main/resources/log/
+src/main/resources/core-site.xml
+src/main/resources/hdfs-site.xml
+TODO
+/hdfs-site.xml
+/core-site.xml
+log/
+hdfs-over-ftp-test.properties
+hdfs-over-ftp.properties
+.settings/
+.project
+.classpath
+assembly.xml
+dependency-reduced-pom.xml

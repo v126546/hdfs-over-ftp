@@ -1,15 +1,19 @@
 package org.apache.hadoop.contrib.ftp;
 
-import org.apache.ftpserver.DefaultDataConnectionConfiguration;
-import org.apache.ftpserver.FtpServer;
-import org.apache.ftpserver.interfaces.DataConnectionConfiguration;
-import org.apache.log4j.Logger;
-
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.net.URL;
-import java.util.Properties;
+
+import org.apache.ftpserver.DataConnectionConfigurationFactory;
+import org.apache.ftpserver.FtpServer;
+import org.apache.ftpserver.FtpServerFactory;
+import org.apache.ftpserver.command.CommandFactoryFactory;
+import org.apache.ftpserver.listener.ListenerFactory;
+import org.apache.ftpserver.message.MessageResourceFactory;
+import org.apache.ftpserver.ssl.SslConfigurationFactory;
+import org.apache.hadoop.contrib.ftp.commands.MLSDextend;
+import org.apache.hadoop.contrib.ftp.commands.MLSTextend;
+import org.apache.hadoop.contrib.ftp.commands.OPTSextend;
+import org.apache.hadoop.contrib.ftp.commands.SITEextend;
+import org.apache.log4j.Logger;
 
 /**
  * Start-up class of FTP server
@@ -17,154 +21,123 @@ import java.util.Properties;
 public class HdfsOverFtpServer {
 
 	private static Logger log = Logger.getLogger(HdfsOverFtpServer.class);
-
-	private static int port = 0;
-	private static int sslPort = 0;
-	private static String passivePorts = null;
-	private static String sslPassivePorts = null;
-	private static String hdfsUri = null;
+	
+	private static FtpServer server = null;
 
 	public static void main(String[] args) throws Exception {
-		loadConfig();
-
-		if (port != 0) {
-			startServer();
-		}
-
-		if (sslPort != 0) {
-			startSSLServer();
-		}
+		
+		FTPConfig.init("hdfs-over-ftp.properties");
+		startServer();
 	}
-
-	/**
-	 * Load configuration
-	 *
-	 * @throws IOException
-	 */
-	private static void loadConfig() throws IOException {
-		Properties props = new Properties();
-		props.load(new FileInputStream(loadResource("/hdfs-over-ftp.properties")));
-
-		try {
-			port = Integer.parseInt(props.getProperty("port"));
-			log.info("port is set. ftp server will be started");
-		} catch (Exception e) {
-			log.info("port is not set. so ftp server will not be started");
-		}
-
-		try {
-			sslPort = Integer.parseInt(props.getProperty("ssl-port"));
-			log.info("ssl-port is set. ssl server will be started");
-		} catch (Exception e) {
-			log.info("ssl-port is not set. so ssl server will not be started");
-		}
-
-		if (port != 0) {
-			passivePorts = props.getProperty("data-ports");
-			if (passivePorts == null) {
-				log.fatal("data-ports is not set");
-				System.exit(1);
-			}
-		}
-
-		if (sslPort != 0) {
-			sslPassivePorts = props.getProperty("ssl-data-ports");
-			if (sslPassivePorts == null) {
-				log.fatal("ssl-data-ports is not set");
-				System.exit(1);
-			}
-		}
-
-		hdfsUri = props.getProperty("hdfs-uri");
-		if (hdfsUri == null) {
-			log.fatal("hdfs-uri is not set");
-			System.exit(1);
-		}
-
-		String superuser = props.getProperty("superuser");
-		if (superuser == null) {
-			log.fatal("superuser is not set");
-			System.exit(1);
-		}
-		HdfsOverFtpSystem.setSuperuser(superuser);
-	}
-
+	
+	
 	/**
 	 * Starts FTP server
 	 *
 	 * @throws Exception
 	 */
-	public static void startServer() throws Exception {
-
-		log.info(
-				"Starting Hdfs-Over-Ftp server. port: " + port + " data-ports: " + passivePorts + " hdfs-uri: " + hdfsUri);
-
-		HdfsOverFtpSystem.setHDFS_URI(hdfsUri);
-
-		FtpServer server = new FtpServer();
-
-		DataConnectionConfiguration dataCon = new DefaultDataConnectionConfiguration();
-		dataCon.setPassivePorts(passivePorts);
-		server.getListener("default").setDataConnectionConfiguration(dataCon);
-		server.getListener("default").setPort(port);
 
 
-		HdfsUserManager userManager = new HdfsUserManager();
-		final File file = loadResource("/users.properties");
+	public static void startServer() throws Exception 
+	{
+		
+		
+		log.info("\n###############################################################################################\n"
+		+"################# Starting Hdfs-Over-Ftp server. version "+ HdfsOverFtpServer.class.getPackage().getImplementationVersion() + " ##################################\n"
+		+"################# port: " + FTPConfig.getPort() +" data-ports: " + FTPConfig.getPassivePorts() +" ############################################\n"
+		+"###############################################################################################");
 
-		userManager.setFile(file);
+		
+		HdfsOverFtpSystem.setCore_site_path(FTPConfig.getCore_site_path());
+		HdfsOverFtpSystem.setHdfs_site_path(FTPConfig.getHdfs_site_path());
+		
+		FtpServerFactory serverFactory = new FtpServerFactory();
+		
+		String listener = "default";
+		
 
-		server.setUserManager(userManager);
-
-		server.setFileSystem(new HdfsFileSystemManager());
-
-		server.start();
-	}
-
-	private static File loadResource(String resourceName) {
-		final URL resource = HdfsOverFtpServer.class.getResource(resourceName);
-		if (resource == null) {
-			throw new RuntimeException("Resource not found: " + resourceName);
+		if (FTPConfig.getPort() != 0)
+		{
+			ListenerFactory factory = new ListenerFactory();
+			
+			DataConnectionConfigurationFactory dccFactory = new DataConnectionConfigurationFactory();
+			dccFactory.setPassivePorts(FTPConfig.getPassivePorts());
+			
+			factory.setDataConnectionConfiguration(dccFactory.createDataConnectionConfiguration());
+	
+			// set the port of the listener
+			factory.setPort(FTPConfig.getPort());
+			// replace the default listener
+			serverFactory.addListener(listener, factory.createListener());
+			// if another listener is added it will be called ssl
+			listener = "ssl";
 		}
-		return new File(resource.getFile());
-	}
-
-	/**
-	 * Starts SSL FTP server
-	 *
-	 * @throws Exception
-	 */
-	public static void startSSLServer() throws Exception {
-
-		log.info(
-				"Starting Hdfs-Over-Ftp SSL server. ssl-port: " + sslPort + " ssl-data-ports: " + sslPassivePorts + " hdfs-uri: " + hdfsUri);
-
-
-		HdfsOverFtpSystem.setHDFS_URI(hdfsUri);
-
-		FtpServer server = new FtpServer();
-
-		DataConnectionConfiguration dataCon = new DefaultDataConnectionConfiguration();
-		dataCon.setPassivePorts(sslPassivePorts);
-		server.getListener("default").setDataConnectionConfiguration(dataCon);
-		server.getListener("default").setPort(sslPort);
-
-		MySslConfiguration ssl = new MySslConfiguration();
-		ssl.setKeystoreFile(new File("ftp.jks"));
-		ssl.setKeystoreType("JKS");
-		ssl.setKeyPassword("333333");
-		server.getListener("default").setSslConfiguration(ssl);
-		server.getListener("default").setImplicitSsl(true);
-
-
-		HdfsUserManager userManager = new HdfsUserManager();
-		userManager.setFile(new File("users.conf"));
-
-		server.setUserManager(userManager);
-
-		server.setFileSystem(new HdfsFileSystemManager());
-
-
+		
+		
+		
+		if (FTPConfig.getSslPort() != 0)
+		{
+		
+			ListenerFactory sslFactory = new ListenerFactory();
+			
+			DataConnectionConfigurationFactory dccSSlFactory = new DataConnectionConfigurationFactory();
+			dccSSlFactory.setPassivePorts(FTPConfig.getSslPassivePorts());
+			
+			sslFactory.setDataConnectionConfiguration(dccSSlFactory.createDataConnectionConfiguration());
+	
+			// set the port of the listener
+			sslFactory.setPort(FTPConfig.getSslPort());
+			
+			
+			// define SSL configuration
+			SslConfigurationFactory ssl = new SslConfigurationFactory();
+			File sslKey = new File(FTPConfig.getKeystore());
+			ssl.setKeystoreFile(sslKey);
+			ssl.setKeystorePassword(FTPConfig.getKeystorePass());
+	
+			// set the SSL configuration for the listener
+			sslFactory.setSslConfiguration(ssl.createSslConfiguration());
+			sslFactory.setImplicitSsl(true);
+			
+			serverFactory.addListener(listener, sslFactory.createListener());
+		}
+		
+		
+		
+		
+		MessageResourceFactory msgResFactory = new MessageResourceFactory();
+		msgResFactory.setCustomMessageDirectory(new File("./src/main/resources"));
+		
+		//System.setProperty("hadoop.home.dir", "\\");
+		
+		
+		KerberosUserManager userManager = new KerberosUserManager("admin"); 
+		
+		 
+		serverFactory.setUserManager(userManager);
+		serverFactory.setMessageResource(msgResFactory.createMessageResource());
+		
+		serverFactory.setFileSystem(new HdfsFileSystemManager());
+		
+		
+		CommandFactoryFactory cmFact = new CommandFactoryFactory();
+		cmFact.setUseDefaultCommands(true);
+		cmFact.addCommand("MLST", new MLSTextend());
+		cmFact.addCommand("MLSD", new MLSDextend());
+		cmFact.addCommand("OPTS", new OPTSextend());
+		cmFact.addCommand("SITE", new SITEextend());
+		serverFactory.setCommandFactory(cmFact.createCommandFactory());
+		
+		
+		// start the server
+		server = serverFactory.createServer();
+		
 		server.start();
 	}
+	
+	public static void stopServer() {
+		server.stop();
+	}
+	
+
 }

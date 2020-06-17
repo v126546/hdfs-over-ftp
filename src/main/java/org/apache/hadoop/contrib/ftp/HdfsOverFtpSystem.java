@@ -1,43 +1,63 @@
 package org.apache.hadoop.contrib.ftp;
 
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hdfs.DistributedFileSystem;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+
+import org.apache.ftpserver.ftplet.User;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.security.UserGroupInformation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Class to store DFS connection
  */
 public class HdfsOverFtpSystem {
 
-	private static DistributedFileSystem dfs = null;
+	private static FileSystem fs = null;
 
-	public static String HDFS_URI = "";
+	
+	private static String hdfs_site_path = null;
+	private static String core_site_path = null;
 
-	private static String superuser = "error";
-	private static String supergroup = "supergroup";
-
+	
 	private final static Logger log = LoggerFactory.getLogger(HdfsOverFtpSystem.class);
 
+	private static void hdfsInit(User user) throws IOException {
+		
+		
+		Configuration conf = new Configuration(); 
 
-	private static void hdfsInit() throws IOException {
-		dfs = new DistributedFileSystem();
-		Configuration conf = new Configuration();
-		conf.set("hadoop.job.ugi", superuser + "," + supergroup);
+		conf.set("hadoop.security.authentication", "kerberos");
+		conf.set("dfs.namenode.kerberos.principal.pattern", "*");
+		
+		
+		conf.addResource(new Path(hdfs_site_path) );
+		conf.addResource(new Path(core_site_path) );
+
+		UserGroupInformation.setConfiguration(conf);
+		// Subject is taken from current user context
+		
+		UserGroupInformation.loginUserFromSubject(((HdfsUser)user).getKerberosSubject());
+
+		fs = FileSystem.get(conf);
+		
 		try {
-			dfs.initialize(new URI(HDFS_URI), conf);
+			String hdfs_uri = conf.get("fs.defaultFS");
+			
+			log.debug("hdfs_uri: "+hdfs_uri);
+			
+			fs.initialize(new URI(hdfs_uri), conf);
 		} catch (URISyntaxException e) {
 			log.error("DFS Initialization error", e);
 		}
+		((HdfsUser)user).setHdfsFilesystem(fs);
 	}
 
-	public static void setHDFS_URI(String HDFS_URI) {
-		HdfsOverFtpSystem.HDFS_URI = HDFS_URI;
-	}
+	
 
 	/**
 	 * Get dfs
@@ -45,46 +65,19 @@ public class HdfsOverFtpSystem {
 	 * @return dfs
 	 * @throws IOException
 	 */
-	public static DistributedFileSystem getDfs() throws IOException {
-		if (dfs == null) {
-			hdfsInit();
+	public static FileSystem getDfs(User user) throws IOException {
+		if (((HdfsUser)user).getHdfsFilesystem() == null) {
+			hdfsInit(user);
 		}
-		return dfs;
+		return ((HdfsUser)user).getHdfsFilesystem();
+	}
+	
+	public static void setHdfs_site_path(String hdfs_site_path) {
+		HdfsOverFtpSystem.hdfs_site_path = hdfs_site_path;
 	}
 
-	/**
-	 * Set superuser. and we connect to DFS as a superuser
-	 *
-	 * @param superuser
-	 */
-	public static void setSuperuser(String superuser) {
-		HdfsOverFtpSystem.superuser = superuser;
+	public static void setCore_site_path(String core_site_path) {
+		HdfsOverFtpSystem.core_site_path = core_site_path;
 	}
 
-//  public static String dirList(String path) throws IOException {
-//    String res = "";
-//
-//        getDfs();
-//
-//        Path file = new Path(path);
-//        FileStatus fileStats[] = dfs.listStatus(file);
-//
-//        for (FileStatus fs : fileStats) {
-//            if (fs.isDir()) {
-//                res += "d";
-//            } else {
-//                res += "-";
-//            }
-//
-//            res += fs.getPermission();
-//            res += " 1";
-//            res += " " + fs.getOwner();
-//            res += " " + fs.getGroup();
-//            res += " " + fs.getLen();
-//            res += " " + new Date(fs.getModificationTime()).toString().substring(4, 16);
-//            res += " " + fs.getPath().getName();
-//            res += "\n";
-//        }
-//    return res;
-//  }
 }

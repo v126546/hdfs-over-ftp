@@ -5,13 +5,24 @@ import org.apache.ftpserver.ftplet.AuthorizationRequest;
 import org.apache.ftpserver.ftplet.User;
 import org.apache.log4j.Logger;
 
+import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTH_TO_LOCAL;
+
+
+import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
-/**
- * Implemented User to add group persmissions
- */
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+
+
+
+import javax.security.auth.Subject;
+
+
 public class HdfsUser implements User, Serializable {
 
 	private static final long serialVersionUID = -47371353779731294L;
@@ -31,23 +42,40 @@ public class HdfsUser implements User, Serializable {
 	private ArrayList<String> groups = new ArrayList<String>();
 
 	private Logger log = Logger.getLogger(HdfsUser.class);
+	
+	private Subject kerberosSubject = null; 
+	private FileSystem hdfsFilesystem = null;
+	
+	private Configuration conf = new Configuration(); 
 
 	/**
 	 * Default constructor.
 	 */
 	public HdfsUser() {
+		conf.addResource(new Path(FTPConfig.getCore_site_path()) );
+	}
+
+	public FileSystem getHdfsFilesystem() {
+		return hdfsFilesystem;
+	}
+
+	public void setHdfsFilesystem(FileSystem hdfsFilesystem) {
+		this.hdfsFilesystem = hdfsFilesystem;
 	}
 
 	/**
 	 * Copy constructor.
+	 * @throws IOException 
 	 */
-	public HdfsUser(User user) {
-		name = user.getName();
+	public HdfsUser(User user)  {
+		
+		this.name = user.getName();
 		password = user.getPassword();
-		authorities = user.getAuthorities();
+		authorities[0] = user.getAuthorities().get(0);
 		maxIdleTimeSec = user.getMaxIdleTime();
 		homeDir = user.getHomeDirectory();
 		isEnabled = user.getEnabled();
+		
 	}
 
 	public ArrayList<String> getGroups() {
@@ -63,8 +91,8 @@ public class HdfsUser implements User, Serializable {
 		if (groups.size() > 0) {
 			return groups.get(0);
 		} else {
-			log.error("User " + name + " is not a memer of any group");
-			return "error";
+			log.error("User \"" + name + "\" is not a member of any group");
+			return null;
 		}
 	}
 
@@ -90,7 +118,7 @@ public class HdfsUser implements User, Serializable {
 	 */
 	public void setGroups(ArrayList<String> groups) {
 		if (groups.size() < 1) {
-			log.error("User " + name + " is not a memer of any group");
+			log.error("User " + name + " is not a member of any group");
 		}
 		this.groups = groups;
 	}
@@ -104,9 +132,31 @@ public class HdfsUser implements User, Serializable {
 
 	/**
 	 * Set user name.
+	 * @throws IOException 
 	 */
 	public void setName(String name) {
-		this.name = name;
+		
+		String ruleString = conf.get(HADOOP_SECURITY_AUTH_TO_LOCAL);
+		if (ruleString != null && ruleString.length() > 0)
+		{
+		
+			KerberosName krbUser = new KerberosName(name+"@"+FTPConfig.getKerberosRealm());
+			
+			
+			KerberosName.setRules(ruleString);
+			
+			try {
+				this.name = krbUser.getShortName();
+			} catch (IOException e) {
+				this.name = name;
+				log.error("auth_to_local rule failed ", e);
+				e.printStackTrace();
+			}
+		}
+		else
+		{
+			this.name = name;
+		}
 	}
 
 	/**
@@ -123,9 +173,22 @@ public class HdfsUser implements User, Serializable {
 		password = pass;
 	}
 
-	public Authority[] getAuthorities() {
+	public Subject getKerberosSubject() {
+		return kerberosSubject;
+	}
+
+	public void setKerberosSubject(Subject kerberosSubject) {
+		/*
+		log.warn("==================================================");
+		log.warn("setKerberosSubject: " + kerberosSubject.toString());
+		log.warn("==================================================");
+		*/
+		this.kerberosSubject = kerberosSubject;
+	}
+
+	public List<Authority> getAuthorities() {
 		if (authorities != null) {
-			return authorities.clone();
+			return Arrays.asList(authorities);
 		} else {
 			return null;
 		}
@@ -195,7 +258,7 @@ public class HdfsUser implements User, Serializable {
 	 * {@inheritDoc}
 	 */
 	public AuthorizationRequest authorize(AuthorizationRequest request) {
-		Authority[] authorities = getAuthorities();
+		List<Authority> authorities = getAuthorities();
 
 		// check for no authorities at all
 		if (authorities == null) {
@@ -203,8 +266,8 @@ public class HdfsUser implements User, Serializable {
 		}
 
 		boolean someoneCouldAuthorize = false;
-		for (int i = 0; i < authorities.length; i++) {
-			Authority authority = authorities[i];
+		for (int i = 0; i < authorities.size(); i++) {
+			Authority authority = authorities.get(i);
 
 			if (authority.canAuthorize(request)) {
 				someoneCouldAuthorize = true;
@@ -216,7 +279,7 @@ public class HdfsUser implements User, Serializable {
 					return null;
 				}
 			}
-
+			
 		}
 
 		if (someoneCouldAuthorize) {
@@ -229,7 +292,7 @@ public class HdfsUser implements User, Serializable {
 	/**
 	 * {@inheritDoc}
 	 */
-	public Authority[] getAuthorities(Class<? extends Authority> clazz) {
+	public List<Authority> getAuthorities(Class<? extends Authority> clazz) {
 		List<Authority> selected = new ArrayList<Authority>();
 
 		for (int i = 0; i < authorities.length; i++) {
@@ -238,6 +301,6 @@ public class HdfsUser implements User, Serializable {
 			}
 		}
 
-		return selected.toArray(new Authority[0]);
+		return Arrays.asList(selected.toArray(new Authority[0]));
 	}
 }

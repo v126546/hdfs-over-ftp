@@ -1,0 +1,16 @@
+port = 2322
+data-ports = 2323-2325
+
+realm=EXAMPLE.COM
+kdc=example.com
+krb5-debug=false
+
+# Account used to run the tests
+test-user=<testuser>
+test-password=<testpass>
+
+# directory used to perform all the hdfs file and folder tests (default: /tmp)
+test-hdfs-dir=/tmp/hdfs-test
+
+# set to true if ranger or sentry are used for hdfs
+access-control-system-used=true
