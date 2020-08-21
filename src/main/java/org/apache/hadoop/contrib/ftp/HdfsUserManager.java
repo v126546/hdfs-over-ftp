@@ -3,6 +3,13 @@ package org.apache.hadoop.contrib.ftp;
 import org.apache.ftpserver.FtpServerConfigurationException;
 import org.apache.ftpserver.ftplet.*;
 import org.apache.ftpserver.usermanager.*;
+import org.apache.ftpserver.usermanager.impl.AbstractUserManager;
+import org.apache.ftpserver.usermanager.impl.ConcurrentLoginPermission;
+import org.apache.ftpserver.usermanager.impl.ConcurrentLoginRequest;
+import org.apache.ftpserver.usermanager.impl.TransferRatePermission;
+import org.apache.ftpserver.usermanager.impl.TransferRateRequest;
+import org.apache.ftpserver.usermanager.impl.WritePermission;
+import org.apache.ftpserver.usermanager.impl.WriteRequest;
 import org.apache.ftpserver.util.BaseProperties;
 import org.apache.ftpserver.util.IoUtils;
 import org.slf4j.Logger;
@@ -311,7 +318,7 @@ public class HdfsUserManager extends AbstractUserManager {
 
 	private ArrayList<String> parseGroups(String groupsLine) {
 		String groupsArray[] = groupsLine.split(",");
-		return new ArrayList(Arrays.asList(groupsArray));
+		return new ArrayList<String>(Arrays.asList(groupsArray));
 	}
 
 	/**
