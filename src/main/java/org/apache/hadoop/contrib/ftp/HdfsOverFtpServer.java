@@ -47,6 +47,7 @@ public class HdfsOverFtpServer {
 		+"################# port: " + FTPConfig.getPort() +" data-ports: " + FTPConfig.getPassivePorts() +" ############################################\n"
 		+"###############################################################################################");
 
+		System.out.println("Starting Hdfs-Over-Ftp server. Version: "+ HdfsOverFtpServer.class.getPackage().getImplementationVersion());
 		
 		HdfsOverFtpSystem.setCore_site_path(FTPConfig.getCore_site_path());
 		HdfsOverFtpSystem.setHdfs_site_path(FTPConfig.getHdfs_site_path());
